@@ -140,19 +140,19 @@ insert into BookingDetail(BookingId, RoomId, Price, StartDate, EndDate) value
 
 #Yêu cầu 1 ( Sử dụng lệnh SQL để truy vấn cơ bản ):
 #1.	Lấy ra danh phòng có sắp xếp giảm dần theo Price gồm các cột sau: Id, Name, Price, SalePrice, Status, CategoryName, CreatedDate
-select r.Id         'ID',
-       r.Name       'Name',
-       r.Price      'Price',
-       r.SalePrice  'SalePrice',
-       r.Status     'Status',
-       c.Name       'CategoryName',
-       r.CreateDate 'CreateDate'
+select r.Id         as ID,
+       r.Name       as Name,
+       r.Price      as Price,
+       r.SalePrice  as SalePrice,
+       r.Status     as Status,
+       c.Name       as CategoryName,
+       r.CreateDate as CreateDate
 from room r
          join category c on r.CategoryId = c.Id
 order by Price DESC;
 
 #2.	Lấy ra danh sách Category gồm: Id, Name, TotalRoom, Status (Trong đó cột Status nếu = 0, Ẩn, = 1 là Hiển thị )
-select c.Id ID, c.Name Name, count(r.Id) 'TotalRoom'
+select c.Id as ID, c.Name as Name, count(r.Id)  as TotalRoom
 from category c
          join Room R on c.Id = R.CategoryId
 where c.Status = 1
@@ -254,15 +254,15 @@ where Name = 'Phòng 17';
 delimiter $$
 create procedure getBookingByCustomerId(cusID_IN int)
 begin
-    select b.Id          Id,
-           b.BookingDate BookingDate,
+    select b.Id          as Id,
+           b.BookingDate as BookingDate,
            case
                when b.Status = 0 then 'Chưa duyệt'
                when b.Status = 1 then 'Đã duyệt'
                when b.Status = 2 then 'Đã thanh toán'
                else 'Đã hủy'
                end as    Status,
-           sum(bd.Price) TotalAmount
+           sum(bd.Price) as TotalAmount
     from booking b
              join bookingdetail bd on b.Id = bd.BookingId
     where b.Id = cusID_IN
@@ -286,25 +286,96 @@ begin
 end $$
 delimiter ;
 
-call getRoomPaginate(1,17);
+call getRoomPaginate(1, 17);
 
 #Yêu cầu 4 ( Sử dụng lệnh SQL tạo Trigger )
 #1.	Tạo trigger tr_Check_Price_Value sao cho khi thêm hoặc sửa phòng Room nếu nếu giá trị của cột Price > 5000000 thì tự động chuyển về 5000000 và in ra thông báo ‘Giá phòng lớn nhất 5 triệu’
 delimiter $$
-create trigger tr_Check_Price_Value
-    before insert on Room
+create trigger tr_Check_Price_Value_before_insert
+    before insert
+    on Room
     for each row
-    begin
-
-    end $$
+begin
+    if NEW.Price > 5000000 then
+        set NEW.Price = 5000000;
+        #        signal sqlstate '45000'
+#            set message_text = 'Giá phòng lớn nhất 5 triệu';
+    end if;
+end$$
 delimiter ;
+
+delimiter $$
+create trigger tr_Check_Price_Value_before_update
+    before update
+    on Room
+    for each row
+begin
+    if NEW.Price > 5000000 then
+        set NEW.Price = 5000000;
+        #        signal sqlstate '45000'
+#            set message_text = 'Giá phòng lớn nhất 5 triệu';
+    end if;
+end$$
+delimiter ;
+
+insert into Room(name, price, categoryid) VALUE ('Phòng 18', 6000000, 5);
+
+update Room
+set Price = 6000000
+where Name = 'Phòng 17';
+
+select *
+from Room;
+
 #2.	Tạo trigger tr_check_Room_NotAllow khi thực hiện đặt pòng, nếu ngày đến (StartDate) và ngày đi (EndDate) của đơn hiện tại mà phòng đã có người đặt rồi thì báo lỗi “Phòng này đã có người đặt trong thời gian này, vui lòng chọn thời gian khác”
+delimiter $$
+create trigger tr_check_Room_NotAllow_before_insert
+    before insert
+    on BookingDetail
+    for each row
+begin
+    if exists(select 1
+              from BookingDetail bd
+              where NEW.RoomId = bd.RoomId
+                and (
+                  (NEW.StartDate between bd.StartDate and bd.EndDate)
+                      or (NEW.EndDate between bd.StartDate and bd.EndDate)
+                      or (NEW.StartDate <= bd.StartDate and NEW.EndDate >= bd.EndDate)
+                  )) then
+        signal sqlstate '45000'
+            set message_text = 'Phòng này đã có người đặt trong thời gian này, vui lòng chọn thời gian khác';
+    end if;
+end$$
+delimiter ;
 
 
+delimiter $$
+create trigger tr_check_Room_NotAllow_before_update
+    before update
+    on BookingDetail
+    for each row
+begin
+    if exists(select 1
+              from BookingDetail bd
+              where NEW.RoomId = bd.RoomId
+                and (
+                  (NEW.StartDate between bd.StartDate and bd.EndDate)
+                      or (NEW.EndDate between bd.StartDate and bd.EndDate)
+                      or (NEW.StartDate <= bd.StartDate and NEW.EndDate >= bd.EndDate)
+                  )) then
+        signal sqlstate '45000'
+            set message_text = 'Phòng này đã có người đặt trong thời gian này, vui lòng chọn thời gian khác';
+    end if;
+end$$
+delimiter ;
+
+select *
+from BookingDetail;
 
 
+insert into bookingdetail(BookingId, RoomId, Price, StartDate, EndDate) value (1, 14, 550000, '2024-04-26 14:00:00', '2024-04-29 12:00:00');
 
-
-
-
-
+update bookingdetail
+set StartDate = '2024-04-26 14:00:00',
+    EndDate   = '2024-04-29 12:00:00'
+where BookingId = 1;
